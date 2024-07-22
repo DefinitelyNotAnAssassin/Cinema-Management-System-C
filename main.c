@@ -516,7 +516,6 @@ void reserveSeat()
         if (movieIndex != -1)
         {
 
-            printf("Movie found.\n");
             break;
         }
     }

@@ -1,0 +1,12 @@
+Cinema No: Cinema 1
+Title: Inception
+Time: 10:30 AM
+Taken Seats:
+A1, A5, A8
+
+Cinema No: Cinema 1
+Title: Inception
+Time: 3:30 PM
+Taken Seats:
+A7
+
