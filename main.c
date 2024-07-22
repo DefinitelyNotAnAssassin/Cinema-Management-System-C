@@ -78,13 +78,14 @@ int main()
 
 void showMenu()
 {
-
+    printf("====================================\n");
     printf("1. Reserve Seat\n");
     printf("2. View Schedule\n");
     printf("3. Search Movie\n");
     printf("4. Print Tickets\n");
     printf("5. Load Schedule From File\n");
     printf("6. Exit\n");
+    printf("====================================\n\n\n");
 
     int choice;
 
@@ -179,6 +180,7 @@ void loadSchedule()
         {
 
             line[strcspn(line, "\n")] = '\0';
+
             strcpy(cinemas[cinemaIndex - 1].movies[movieIndex].title, line);
             lineCounter++;
             continue;
@@ -470,11 +472,13 @@ void reserveSeat()
     char movieTitle[100];
     char movieTime[100];
     char seatNumber[3];
-    int cinemaIndex, movieIndex, scheduleIndex, seatRow, seatColumn;
+    int cinemaIndex = -1, movieIndex = -1, scheduleIndex = -1;
+    char seatRow;
+    int seatColumn;
 
     printf("Enter movie title: ");
     scanf(" %[^\n]", movieTitle);
-    printf("Enter movie time (HH:MM): ");
+    printf("Enter movie time (HH:MM AM/PM): ");
     scanf(" %[^\n]", movieTime);
     printf("Enter seat number (e.g. A1): ");
     scanf(" %[^\n]", seatNumber);
@@ -485,33 +489,67 @@ void reserveSeat()
         {
             if (strcmp(cinemas[i].movies[j].title, movieTitle) == 0)
             {
+                cinemaIndex = i;
+                movieIndex = j;
                 for (int k = 0; k < MAX_SCHEDULE_PER_DAY; k++)
                 {
+
+                    printf("%s\n", cinemas[i].movies[j].schedule[k].time);
+
                     if (strcmp(cinemas[i].movies[j].schedule[k].time, movieTime) == 0)
                     {
-                        cinemaIndex = i;
-                        movieIndex = j;
+                        printf("Schedule found.\n");
+                        printf("%s\n", cinemas[i].movies[j].schedule[k].time);
                         scheduleIndex = k;
                         break;
                     }
                 }
+                // If a matching movie is found but no schedule matches, break the loop
+                if (scheduleIndex == -1)
+                {
+                    printf("No matching schedule found.\n");
+                    break;
+                }
             }
+        }
+        // If a matching movie is found (regardless of the schedule), break the loop
+        if (movieIndex != -1)
+        {
+
+            printf("Movie found.\n");
+            break;
         }
     }
 
-    seatRow = toupper(seatNumber[0]) - 'A';
-    seatColumn = atoi(seatNumber + 1) - 1;
-
-    if (cinemas[cinemaIndex].movies[movieIndex].schedule[scheduleIndex].seats[seatRow][seatColumn]->isReserved)
+    // Handle the case where no matching movie or schedule is found
+    if (cinemaIndex == -1 || movieIndex == -1 || scheduleIndex == -1)
     {
-        printf("Seat %s is already reserved.\n", seatNumber);
+
+        showMenu();
     }
+
     else
     {
-        cinemas[cinemaIndex].movies[movieIndex].schedule[scheduleIndex].seats[seatRow][seatColumn]->isReserved = 1;
-        printf("Seat %s reserved successfully.\n", seatNumber);
+        seatRow = toupper(seatNumber[0]) - 'A';
+        seatColumn = atoi(seatNumber + 1) - 1;
 
-        printSeats(&cinemas[cinemaIndex].movies[movieIndex].schedule[scheduleIndex]);
+        if (seatRow < 0 || seatRow >= 5 || seatColumn < 0 || seatColumn >= 10)
+        {
+            printf("Invalid seat number.\n");
+            showMenu();
+        }
+
+        if (cinemas[cinemaIndex].movies[movieIndex].schedule[scheduleIndex].seats[seatRow][seatColumn]->isReserved)
+        {
+            printf("Seat %s is already reserved.\n", seatNumber);
+        }
+        else
+        {
+            cinemas[cinemaIndex].movies[movieIndex].schedule[scheduleIndex].seats[seatRow][seatColumn]->isReserved = 1;
+            printf("Seat %s reserved successfully.\n", seatNumber);
+
+            printSeats(&cinemas[cinemaIndex].movies[movieIndex].schedule[scheduleIndex]);
+        }
     }
 }
 
@@ -664,12 +702,14 @@ int verifySchedule()
                 }
 
                 int currentMinutes = timeToMinutes(cinemas[i].movies[j].schedule[k].time);
+                int movieDuration = cinemas[i].movies[j].duration; // Assuming duration is in minutes
+                int currentMovieEnd = currentMinutes + movieDuration;
 
                 // Check if the showing time is outside the allowed window
-                if (currentMinutes < startMinutes || currentMinutes > endMinutes)
+                if (currentMinutes < startMinutes || currentMovieEnd > endMinutes)
                 {
                     printf("---------------------------------------------\n");
-                    printf("Invalid showing time: %s\n", cinemas[i].movies[j].schedule[k].time);
+                    printf("Invalid showing time or duration: %s\n", cinemas[i].movies[j].schedule[k].time);
                     printf("---------------------------------------------\n\n\n");
                     isValid = 0; // Mark as invalid
                 }
@@ -677,14 +717,18 @@ int verifySchedule()
                 // Check for overlapping schedules
                 if (k > 0)
                 {
-                    int previousMinutes = timeToMinutes(cinemas[i].movies[j].schedule[k - 1].time);
+                    int previousMovieEnd = timeToMinutes(cinemas[i].movies[j].schedule[k - 1].time) + cinemas[i].movies[j].duration + buffer;
 
-                    if (currentMinutes - previousMinutes < buffer)
+                    if (currentMinutes < previousMovieEnd)
                     {
                         printf("---------------------------------------------\n");
                         printf("Overlapping Schedule\nCinema: %s\nMovie: %s\nSchedule: %s and %s\n",
                                cinemas[i].name, cinemas[i].movies[j].title,
                                cinemas[i].movies[j].schedule[k - 1].time, cinemas[i].movies[j].schedule[k].time);
+
+                        int gap = currentMinutes - previousMovieEnd;
+
+                        printf("Overlap between schedules: %d minutes\n", gap);
                         isValid = 0; // Mark as invalid
                         printf("---------------------------------------------\n\n\n");
                     }
