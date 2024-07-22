@@ -34,6 +34,7 @@ struct Cinema
 };
 
 struct Cinema cinemas[2];
+struct Cinema empty[2];
 
 void initializeCinemas();
 
@@ -43,6 +44,8 @@ void showSchedule();
 
 void loadSchedule();
 
+void loadScheduleFromFile();
+
 int getMovieIndex(struct Cinema *cinema, const char *title);
 
 void initializeSeats(struct Schedule *schedule);
@@ -51,11 +54,13 @@ void printSeats(struct Schedule *schedule);
 
 void reserveSeat();
 
+int countReservedSeats(struct Schedule *schedule);
+
 void printTickets();
 
 void onExit();
 
-void verifySchedule();
+int verifySchedule();
 
 void showMenu();
 
@@ -78,7 +83,8 @@ void showMenu()
     printf("2. View Schedule\n");
     printf("3. Search Movie\n");
     printf("4. Print Tickets\n");
-    printf("5. Exit\n");
+    printf("5. Load Schedule From File\n");
+    printf("6. Exit\n");
 
     int choice;
 
@@ -114,6 +120,11 @@ void showMenu()
 
     case 5:
     {
+        loadScheduleFromFile();
+        break;
+    }
+    case 6:
+    {
         onExit();
         exit(0);
     }
@@ -123,6 +134,7 @@ void showMenu()
 void loadSchedule()
 {
     FILE *file;
+
     char *filename = "MovieSched.txt";
     char line[1024];
     int cinemaIndex = 0;
@@ -195,6 +207,102 @@ void loadSchedule()
         }
     }
     fclose(file);
+
+    if (verifySchedule())
+    {
+        printf("Schedule is valid.\n");
+    }
+    else
+    {
+        printf("Schedule is invalid. Modify the schedule file and run the program again.\n");
+        exit(0);
+    }
+}
+
+void loadScheduleFromFile()
+{
+    FILE *file;
+    char filename[100];
+
+    char line[1024];
+    int cinemaIndex = 0;
+    int movieIndex = 0;
+    int scheduleIndex = 0;
+    int lineCounter = 0;
+
+    printf("Enter the filename: ");
+    scanf(" %[^\n]", filename);
+
+    // Clear cinemas
+    memset(cinemas, 0, sizeof(cinemas));
+
+    file = fopen(filename, "r");
+    if (file == NULL)
+    {
+        printf("Could not open file %s", filename);
+    }
+    while (fgets(line, sizeof(line), file))
+    {
+        // check if line is empty
+        if (line[0] == '\n')
+        {
+            continue;
+        }
+        else if (isdigit(line[0]) && strstr(line, ":") == NULL && strstr(line, "min") == NULL)
+        {
+            if (cinemaIndex == atoi(line))
+            {
+                movieIndex++;
+            }
+            else
+            {
+                cinemaIndex = atoi(line);
+                movieIndex = 0;
+            }
+            scheduleIndex = 0;
+            lineCounter = 1;
+            continue;
+        }
+        else if (lineCounter == 1)
+        {
+            line[strcspn(line, "\n")] = '\0';
+            strcpy(cinemas[cinemaIndex - 1].movies[movieIndex].title, line);
+            lineCounter++;
+            continue;
+        }
+        else if (lineCounter == 2)
+        {
+            strcpy(cinemas[cinemaIndex - 1].movies[movieIndex].description, line);
+            lineCounter++;
+            continue;
+        }
+        else if (lineCounter == 3)
+        {
+            cinemas[cinemaIndex - 1].movies[movieIndex].duration = atoi(line);
+            lineCounter++;
+            continue;
+        }
+        else if (strstr(line, ":") != NULL)
+        {
+            line[strcspn(line, "\n")] = '\0';
+            strcpy(cinemas[cinemaIndex - 1].movies[movieIndex].schedule[scheduleIndex].time, line);
+            initializeSeats(&cinemas[cinemaIndex - 1].movies[movieIndex].schedule[scheduleIndex]);
+            scheduleIndex++;
+            lineCounter++;
+            continue;
+        }
+    }
+    fclose(file);
+
+    if (verifySchedule())
+    {
+        printf("Schedule is valid.\n");
+    }
+    else
+    {
+        printf("Schedule is invalid. Modify the schedule file and run the program again.\n");
+        exit(0);
+    }
 }
 
 int getMovieIndex(struct Cinema *cinema, const char *title)
@@ -407,10 +515,37 @@ void reserveSeat()
     }
 }
 
+int countReservedSeats(struct Schedule *schedule)
+{
+    int count = 0;
+    for (int i = 0; i < 5; i++)
+    {
+        for (int j = 0; j < 10; j++)
+        {
+            if (schedule->seats[i][j]->isReserved)
+            {
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
 int timeToMinutes(const char *timeStr)
 {
     int hours, minutes;
-    sscanf(timeStr, "%d:%d", &hours, &minutes);
+    char period[3]; // To store "AM" or "PM"
+    sscanf(timeStr, "%d:%d %2s", &hours, &minutes, period);
+
+    if ((strcmp(period, "PM") == 0) && (hours < 12))
+    {
+        hours += 12;
+    }
+    else if ((strcmp(period, "AM") == 0) && (hours == 12))
+    {
+        hours = 0;
+    }
+
     return hours * 60 + minutes;
 }
 
@@ -450,8 +585,7 @@ void onExit()
 {
     printf("Exiting...\n");
 
-    // Save the reserved seats in a file in the format of cinema, movie, time, seat
-
+    // Save the reserved seats in a file in the format specified
     FILE *file;
     time_t t = time(NULL);
     struct tm tm = *localtime(&t);
@@ -477,57 +611,87 @@ void onExit()
                     {
                         break;
                     }
+                    // Initialize a variable to store reserved seats as a string
+                    char reservedSeats[500] = ""; // Adjust size as necessary
+                    int hasReservedSeats = 0;     // Flag to check if there are any reserved seats
+
                     for (int l = 0; l < 5; l++)
                     {
                         for (int m = 0; m < 10; m++)
                         {
                             if (cinemas[i].movies[j].schedule[k].seats[l][m]->isReserved)
                             {
-                                fprintf(file, "%s\n%s\n%s\n%s\n\n", cinemas[i].name, cinemas[i].movies[j].title, cinemas[i].movies[j].schedule[k].time, cinemas[i].movies[j].schedule[k].seats[l][m]->seatNumber);
+                                // Append seat number to reservedSeats string
+                                char seat[10]; // Adjust size as necessary
+                                sprintf(seat, "%s, ", cinemas[i].movies[j].schedule[k].seats[l][m]->seatNumber);
+                                strcat(reservedSeats, seat);
+                                hasReservedSeats = 1;
                             }
                         }
                     }
+
+                    // Remove the last comma and space if there are reserved seats
+                    if (hasReservedSeats)
+                    {
+                        reservedSeats[strlen(reservedSeats) - 2] = '\0'; // Overwrite the last comma and space
+                        fprintf(file, "Cinema No: %s\nTitle: %s\nTime: %s\nTaken Seats:\n%s\n\n", cinemas[i].name, cinemas[i].movies[j].title, cinemas[i].movies[j].schedule[k].time, reservedSeats);
+                    }
                 }
             }
         }
+        fclose(file); // Don't forget to close the file
     }
 }
 
-void verifySchedule()
+int verifySchedule()
 {
+    printf("Verifying schedule...\n");
+
+    int startMinutes = timeToMinutes("10:30 AM");
+    int endMinutes = timeToMinutes("9:00 PM");
+    int buffer = 45; // There's a 45 minute buffer between each movie
+    int isValid = 1; // Assume schedule is valid initially
 
     for (int i = 0; i < CINEMA_COUNT; i++)
     {
-        printf("Verifying Cinema: %s\n\n", cinemas[i].name);
-        // Assuming 'cinemas', 'i', and 'movieIndex' are already defined in your context
-        for (int currentMovieIndex = 0; currentMovieIndex < sizeof(cinemas[i].movies) / sizeof(cinemas[i].movies[0]); currentMovieIndex++)
+        for (int j = 0; j < sizeof(cinemas[i].movies) / sizeof(cinemas[i].movies[0]); j++)
         {
-            for (int currentScheduleIndex = 0; currentScheduleIndex < MAX_SCHEDULE_PER_DAY; currentScheduleIndex++)
+            for (int k = 0; k < MAX_SCHEDULE_PER_DAY; k++)
             {
-                if (cinemas[i].movies[currentMovieIndex].schedule[currentScheduleIndex].time[0] == '\0')
+                if (cinemas[i].movies[j].schedule[k].time[0] == '\0')
                 {
-                    break; // No more schedules for this movie
+                    break; // No more schedules
                 }
-                int currentEndTime = timeToMinutes(cinemas[i].movies[currentMovieIndex].schedule[currentScheduleIndex].time) + cinemas[i].movies[currentMovieIndex].duration;
 
-                for (int nextMovieIndex = currentMovieIndex; nextMovieIndex < sizeof(cinemas[i].movies) / sizeof(cinemas[i].movies[0]); nextMovieIndex++)
+                int currentMinutes = timeToMinutes(cinemas[i].movies[j].schedule[k].time);
+
+                // Check if the showing time is outside the allowed window
+                if (currentMinutes < startMinutes || currentMinutes > endMinutes)
                 {
-                    for (int nextScheduleIndex = (currentMovieIndex == nextMovieIndex) ? currentScheduleIndex + 1 : 0; nextScheduleIndex < MAX_SCHEDULE_PER_DAY; nextScheduleIndex++)
-                    {
-                        if (cinemas[i].movies[nextMovieIndex].schedule[nextScheduleIndex].time[0] == '\0')
-                        {
-                            break; // No more schedules for this movie or moving to the next movie
-                        }
-                        int nextStartTime = timeToMinutes(cinemas[i].movies[nextMovieIndex].schedule[nextScheduleIndex].time);
+                    printf("---------------------------------------------\n");
+                    printf("Invalid showing time: %s\n", cinemas[i].movies[j].schedule[k].time);
+                    printf("---------------------------------------------\n\n\n");
+                    isValid = 0; // Mark as invalid
+                }
 
-                        // Check if there is enough time for the 45-minute gap between the current end time and the next start time
-                        if (currentEndTime + 45 > nextStartTime)
-                        {
-                            printf("Error: Not enough time for cleaning between %s and %s.\n", cinemas[i].movies[currentMovieIndex].title, cinemas[i].movies[nextMovieIndex].title);
-                        }
+                // Check for overlapping schedules
+                if (k > 0)
+                {
+                    int previousMinutes = timeToMinutes(cinemas[i].movies[j].schedule[k - 1].time);
+
+                    if (currentMinutes - previousMinutes < buffer)
+                    {
+                        printf("---------------------------------------------\n");
+                        printf("Overlapping Schedule\nCinema: %s\nMovie: %s\nSchedule: %s and %s\n",
+                               cinemas[i].name, cinemas[i].movies[j].title,
+                               cinemas[i].movies[j].schedule[k - 1].time, cinemas[i].movies[j].schedule[k].time);
+                        isValid = 0; // Mark as invalid
+                        printf("---------------------------------------------\n\n\n");
                     }
                 }
             }
         }
     }
+
+    return isValid; // Return 1 if valid, 0 if not
 }
